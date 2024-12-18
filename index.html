@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jackpot Game</title>
+    <title>Jackpot Multiplayer Game</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -35,210 +35,128 @@
             transition: transform 0.3s ease, background-color 0.3s ease;
         }
 
-        .block:hover {
-            transform: scale(1.1);
-        }
-
         .block.clicked {
             background-color: #6c757d;
             cursor: not-allowed;
-            transform: rotateY(180deg);
         }
 
         .block.winner {
             background-color: gold;
             color: black;
             font-size: 20px;
-            position: relative;
         }
 
-        .block.winner::after {
-            content: "🎉";
-            position: absolute;
-            top: -20px;
-            animation: fall 2s infinite;
-        }
-
-        @keyframes fall {
-            0% { transform: translateY(-100px); opacity: 1; }
-            100% { transform: translateY(0); opacity: 0; }
-        }
-
-        #status, #prize-pool, #timer {
+        #status, #prize-pool, #players {
             margin: 10px;
             font-size: 18px;
-        }
-
-        #new-game-button {
-            display: none;
-            margin: 20px;
-            padding: 10px 20px;
-            font-size: 16px;
-            background-color: #17a2b8;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-
-        #new-game-button:hover {
-            background-color: #138496;
-        }
-
-        #topup-button {
-            margin: 20px;
-            padding: 10px 20px;
-            font-size: 16px;
-            background-color: #28a745;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-
-        #topup-button:hover {
-            background-color: #218838;
         }
     </style>
 </head>
 <body>
-    <h1>Jackpot Game</h1>
-    <p>Click on a block to try your luck! Each click costs 10 points.</p>
-    <div id="status">Points: 100</div>
+    <h1>Jackpot Multiplayer Game</h1>
+    <div id="status">Connecting to game...</div>
     <div id="prize-pool">Prize Pool: 0</div>
-    <div id="timer">Next board refresh in: 2:00</div>
+    <div id="players">Players Online: 0</div>
     <div id="game-board"></div>
-    <button id="topup-button" onclick="topUpPoints()">Top Up Points</button>
-    <button id="new-game-button" onclick="refreshBoard()">New Game</button>
 
-    <script>
-        const TOTAL_POINTS = 100;
-        const POINTS_PER_CLICK = 10;
-        const TOTAL_BLOCKS = 100;
-        const JACKPOT_PERCENTAGE = 0.9;
-        const REFRESH_TIME = 2 * 60 * 1000; // 2 minutes in milliseconds
+    <script type="module">
+        // Import Firebase SDK
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
+        import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-database.js";
 
-        let points = TOTAL_POINTS;
+        // Firebase Config
+        const firebaseConfig = {
+            apiKey: "AIzaSyDKR5xb4a2hfCZXGmn1qNa2QVhr3lYmraI",
+            authDomain: "jackpot-games-ba56e.firebaseapp.com",
+            databaseURL: "https://jackpot-games-ba56e.firebaseio.com",
+            projectId: "jackpot-games-ba56e",
+            storageBucket: "jackpot-games-ba56e.appspot.com",
+            messagingSenderId: "503506637310",
+            appId: "1:503506637310:web:ae984e9dae892da52e70af",
+            measurementId: "G-NS9QGWPY15"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Game Variables
+        let playerId = `player_${Date.now()}`; // Unique player ID
+        let points = 100;
+        let jackpotBlock;
         let prizePool = 0;
-        let jackpotPoints = 0;
-        let jackpotBlock = 0;
-        let gameEnded = false;
 
+        // DOM Elements
         const statusElement = document.getElementById('status');
         const prizePoolElement = document.getElementById('prize-pool');
-        const timerElement = document.getElementById('timer');
+        const playersElement = document.getElementById('players');
         const gameBoard = document.getElementById('game-board');
-        const newGameButton = document.getElementById('new-game-button');
 
-        let timerInterval;
-
+        // Initialize Game Board
         function initializeBoard() {
-            gameEnded = false;
-            newGameButton.style.display = 'none';
-
-            jackpotBlock = Math.floor(Math.random() * TOTAL_BLOCKS);
-
             gameBoard.innerHTML = "";
-            for (let i = 0; i < TOTAL_BLOCKS; i++) {
+            for (let i = 0; i < 100; i++) {
                 const block = document.createElement('div');
                 block.className = 'block';
                 block.dataset.index = i;
                 block.textContent = "?";
 
                 block.addEventListener('click', () => {
-                    if (gameEnded || block.classList.contains('clicked') || points < POINTS_PER_CLICK) {
-                        if (points < POINTS_PER_CLICK) {
-                            statusElement.textContent = "Insufficient points. Please top up!";
-                        }
+                    if (points < 10) {
+                        statusElement.textContent = "Insufficient points!";
                         return;
                     }
 
-                    points -= POINTS_PER_CLICK;
-                    prizePool += POINTS_PER_CLICK;
-
+                    const blockIndex = block.dataset.index;
                     block.classList.add('clicked');
-                    block.textContent = "0";
+                    block.textContent = "X";
 
-                    if (parseInt(block.dataset.index) === jackpotBlock) {
-                        block.textContent = "👑";
-                        block.classList.add('winner');
-
-                        const totalPrize = Math.floor(prizePool * JACKPOT_PERCENTAGE);
-                        const houseCut = prizePool - totalPrize;
-
-                        points += totalPrize;
-                        prizePool = houseCut;
-
-                        statusElement.textContent = `Congratulations! You won ${totalPrize} points! 🎉`;
-                        prizePoolElement.textContent = `Prize Pool: ${prizePool}`;
-
-                        updatePointsDisplay();
-                        celebrateWinner(block);
-                        endGame();
-                        return;
-                    }
-
-                    updatePointsDisplay();
+                    // Update Database
+                    update(ref(db, `game/blocks/${blockIndex}`), { clickedBy: playerId });
                 });
 
                 gameBoard.appendChild(block);
             }
         }
 
-        function updatePointsDisplay() {
-            statusElement.textContent = `Points: ${points}`;
+        // Update Game State
+        onValue(ref(db, 'game'), (snapshot) => {
+            const gameState = snapshot.val();
+            if (!gameState) return;
+
+            jackpotBlock = gameState.jackpotBlock;
+            prizePool = gameState.prizePool;
+
             prizePoolElement.textContent = `Prize Pool: ${prizePool}`;
-        }
+            updateBoard(gameState.blocks);
+        });
 
-        function startTimer(duration) {
-            let timeLeft = duration / 1000;
-            timerElement.textContent = `Next board refresh in: ${formatTime(timeLeft)}`;
-            clearInterval(timerInterval);
-            timerInterval = setInterval(() => {
-                timeLeft--;
-                timerElement.textContent = `Next board refresh in: ${formatTime(timeLeft)}`;
-                if (timeLeft <= 0) {
-                    clearInterval(timerInterval);
-                    refreshBoard();
+        // Update Board with Realtime Data
+        function updateBoard(blocks) {
+            if (!blocks) return;
+
+            Object.keys(blocks).forEach((blockIndex) => {
+                const block = document.querySelector(`[data-index='${blockIndex}']`);
+                const blockData = blocks[blockIndex];
+
+                if (blockData.clickedBy && !block.classList.contains('clicked')) {
+                    block.classList.add('clicked');
+                    block.textContent = blockIndex == jackpotBlock ? "👑" : "X";
                 }
-            }, 1000);
+            });
         }
 
-        function formatTime(seconds) {
-            const minutes = Math.floor(seconds / 60);
-            const secs = seconds % 60;
-            return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
-        }
+        // Register Player
+        set(ref(db, `players/${playerId}`), { points: points });
 
-        function refreshBoard() {
-            points = Math.max(points, 100); // Ensures points do not drop below 100 on refresh
-            statusElement.textContent = `Points: ${points}`;
-            initializeBoard();
-            startTimer(REFRESH_TIME);
-        }
+        // Listen for Players Online
+        onValue(ref(db, 'players'), (snapshot) => {
+            const players = snapshot.val();
+            playersElement.textContent = `Players Online: ${Object.keys(players || {}).length}`;
+        });
 
-        function endGame() {
-            gameEnded = true;
-            clearInterval(timerInterval);
-            newGameButton.style.display = 'block';
-            const blocks = document.querySelectorAll('.block');
-            blocks.forEach(block => block.classList.add('clicked'));
-        }
-
-        function celebrateWinner(block) {
-            block.innerHTML += `<div style="position:absolute; top:50%; transform: translateY(-50%); animation: fall 2s infinite;">🎊🎊🎊</div>`;
-            statusElement.textContent += " Congratulations to the winner! 🎉";
-        }
-
-        function topUpPoints() {
-            points += TOTAL_POINTS;
-            updatePointsDisplay();
-            statusElement.textContent = `Points topped up! Current points: ${points}`;
-        }
-
-        // Start the game
+        // Initialize Board on Load
         initializeBoard();
-        startTimer(REFRESH_TIME);
     </script>
 </body>
 </html>
