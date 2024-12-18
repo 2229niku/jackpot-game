@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jackpot Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(10, 50px);
+            grid-template-rows: repeat(10, 50px);
+            gap: 5px;
+            margin: 20px auto;
+            width: fit-content;
+        }
+
+        .block {
+            width: 50px;
+            height: 50px;
+            background-color: #007BFF;
+            color: white;
+            border: 1px solid #0056b3;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.3s ease, background-color 0.3s ease;
+        }
+
+        .block:hover {
+            transform: scale(1.1);
+        }
+
+        .block.clicked {
+            background-color: #6c757d;
+            cursor: not-allowed;
+            transform: rotateY(180deg);
+        }
+
+        .block.winner {
+            background-color: gold;
+            color: black;
+            font-size: 20px;
+            position: relative;
+        }
+
+        .block.winner::after {
+            content: "🎉";
+            position: absolute;
+            top: -20px;
+            animation: fall 2s infinite;
+        }
+
+        @keyframes fall {
+            0% { transform: translateY(-100px); opacity: 1; }
+            100% { transform: translateY(0); opacity: 0; }
+        }
+
+        #status, #prize-pool, #timer {
+            margin: 10px;
+            font-size: 18px;
+        }
+
+        #new-game-button {
+            display: none;
+            margin: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #17a2b8;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #new-game-button:hover {
+            background-color: #138496;
+        }
+
+        #topup-button {
+            margin: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #topup-button:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body>
+    <h1>Jackpot Game</h1>
+    <p>Click on a block to try your luck! Each click costs 10 points.</p>
+    <div id="status">Points: 100</div>
+    <div id="prize-pool">Prize Pool: 0</div>
+    <div id="timer">Next board refresh in: 2:00</div>
+    <div id="game-board"></div>
+    <button id="topup-button" onclick="topUpPoints()">Top Up Points</button>
+    <button id="new-game-button" onclick="refreshBoard()">New Game</button>
+
+    <script>
+        const TOTAL_POINTS = 100;
+        const POINTS_PER_CLICK = 10;
+        const TOTAL_BLOCKS = 100;
+        const JACKPOT_PERCENTAGE = 0.9;
+        const REFRESH_TIME = 2 * 60 * 1000; // 2 minutes in milliseconds
+
+        let points = TOTAL_POINTS;
+        let prizePool = 0;
+        let jackpotPoints = 0;
+        let jackpotBlock = 0;
+        let gameEnded = false;
+
+        const statusElement = document.getElementById('status');
+        const prizePoolElement = document.getElementById('prize-pool');
+        const timerElement = document.getElementById('timer');
+        const gameBoard = document.getElementById('game-board');
+        const newGameButton = document.getElementById('new-game-button');
+
+        let timerInterval;
+
+        function initializeBoard() {
+            gameEnded = false;
+            newGameButton.style.display = 'none';
+
+            jackpotBlock = Math.floor(Math.random() * TOTAL_BLOCKS);
+
+            gameBoard.innerHTML = "";
+            for (let i = 0; i < TOTAL_BLOCKS; i++) {
+                const block = document.createElement('div');
+                block.className = 'block';
+                block.dataset.index = i;
+                block.textContent = "?";
+
+                block.addEventListener('click', () => {
+                    if (gameEnded || block.classList.contains('clicked') || points < POINTS_PER_CLICK) {
+                        if (points < POINTS_PER_CLICK) {
+                            statusElement.textContent = "Insufficient points. Please top up!";
+                        }
+                        return;
+                    }
+
+                    points -= POINTS_PER_CLICK;
+                    prizePool += POINTS_PER_CLICK;
+
+                    block.classList.add('clicked');
+                    block.textContent = "0";
+
+                    if (parseInt(block.dataset.index) === jackpotBlock) {
+                        block.textContent = "👑";
+                        block.classList.add('winner');
+
+                        const totalPrize = Math.floor(prizePool * JACKPOT_PERCENTAGE);
+                        const houseCut = prizePool - totalPrize;
+
+                        points += totalPrize;
+                        prizePool = houseCut;
+
+                        statusElement.textContent = `Congratulations! You won ${totalPrize} points! 🎉`;
+                        prizePoolElement.textContent = `Prize Pool: ${prizePool}`;
+
+                        updatePointsDisplay();
+                        celebrateWinner(block);
+                        endGame();
+                        return;
+                    }
+
+                    updatePointsDisplay();
+                });
+
+                gameBoard.appendChild(block);
+            }
+        }
+
+        function updatePointsDisplay() {
+            statusElement.textContent = `Points: ${points}`;
+            prizePoolElement.textContent = `Prize Pool: ${prizePool}`;
+        }
+
+        function startTimer(duration) {
+            let timeLeft = duration / 1000;
+            timerElement.textContent = `Next board refresh in: ${formatTime(timeLeft)}`;
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                timerElement.textContent = `Next board refresh in: ${formatTime(timeLeft)}`;
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    refreshBoard();
+                }
+            }, 1000);
+        }
+
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+
+        function refreshBoard() {
+            points = Math.max(points, 100); // Ensures points do not drop below 100 on refresh
+            statusElement.textContent = `Points: ${points}`;
+            initializeBoard();
+            startTimer(REFRESH_TIME);
+        }
+
+        function endGame() {
+            gameEnded = true;
+            clearInterval(timerInterval);
+            newGameButton.style.display = 'block';
+            const blocks = document.querySelectorAll('.block');
+            blocks.forEach(block => block.classList.add('clicked'));
+        }
+
+        function celebrateWinner(block) {
+            block.innerHTML += `<div style="position:absolute; top:50%; transform: translateY(-50%); animation: fall 2s infinite;">🎊🎊🎊</div>`;
+            statusElement.textContent += " Congratulations to the winner! 🎉";
+        }
+
+        function topUpPoints() {
+            points += TOTAL_POINTS;
+            updatePointsDisplay();
+            statusElement.textContent = `Points topped up! Current points: ${points}`;
+        }
+
+        // Start the game
+        initializeBoard();
+        startTimer(REFRESH_TIME);
+    </script>
+</body>
+</html>
